@@ -46,13 +46,20 @@ class CollisionProvider with ChangeNotifier {
         Uint8List? imageBytes = await captureImageCallback();
         if (imageBytes != null && _isMonitoring) {
           // Run inference in background using compute to avoid blocking UI
-          _lastResult = await _runDepthEstimationInBackground(imageBytes);
+          final result = await _runDepthEstimationInBackground(imageBytes);
 
-          if (_lastResult!.hasCollision && _isMonitoring) {
-            await _hapticService.vibrateCollisionAlert();
-            await _tts_service.speak('Cuidado, riesgo de colision!');
+          // Check if result is valid before using it
+          if (result != null) {
+            _lastResult = result;
+
+            if (result.hasCollision && _isMonitoring) {
+              await _hapticService.vibrateCollisionAlert();
+              await _tts_service.speak('Cuidado, riesgo de colision!');
+            }
+            notifyListeners();
+          } else {
+            debugPrint('Depth estimation returned null result');
           }
-          notifyListeners();
         }
       } catch (e) {
         debugPrint('Error en monitoreo: $e');
@@ -77,13 +84,20 @@ class CollisionProvider with ChangeNotifier {
       Uint8List? imageBytes = await captureImageCallback();
       if (imageBytes != null) {
         // Run inference in background to avoid ANR
-        _lastResult = await _runDepthEstimationInBackground(imageBytes);
+        final result = await _runDepthEstimationInBackground(imageBytes);
 
-        if (_lastResult!.hasCollision) {
-          await _hapticService.vibrateCollisionAlert();
-          await _tts_service.speak('Cuidado, riesgo de colision!');
+        // Check if result is valid before using it
+        if (result != null) {
+          _lastResult = result;
+
+          if (result.hasCollision) {
+            await _hapticService.vibrateCollisionAlert();
+            await _tts_service.speak('Cuidado, riesgo de colision!');
+          }
+          notifyListeners();
+        } else {
+          debugPrint('Depth estimation returned null result');
         }
-        notifyListeners();
       }
     } catch (e) {
       debugPrint('Error in single capture: $e');
@@ -94,16 +108,18 @@ class CollisionProvider with ChangeNotifier {
   }
 
   // Helper method to run depth estimation in background
-  Future<DepthResult> _runDepthEstimationInBackground(Uint8List imageBytes) async {
+  Future<DepthResult?> _runDepthEstimationInBackground(Uint8List imageBytes) async {
     // Try to use compute (isolate) if possible, otherwise run directly
     try {
       // Note: compute doesn't work well with services that have state
       // So we run it directly but ensure the UI thread is not blocked
       // by yielding control periodically
-      return await _depthService.estimateDepth(imageBytes);
+      final result = await _depthService.estimateDepth(imageBytes);
+      return result;
     } catch (e) {
       debugPrint('Error in background estimation: $e');
-      rethrow;
+      // Return null instead of rethrowing to prevent crashes
+      return null;
     }
   }
 
